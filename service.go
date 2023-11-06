@@ -27,8 +27,12 @@ func NewInteract(conn net.Conn, connected *int32) Interacter {
 }
 
 func (rec *Interact) Exec() {
-	logrus.WithFields(logrus.Fields{"remoteAddr": rec.conn.RemoteAddr().String()}).Info("connection established")
-	defer rec.conn.Close()
+	remoteAddr := rec.conn.RemoteAddr().String()
+	logrus.WithFields(logrus.Fields{"remoteAddr": remoteAddr}).Info("connection established")
+	defer func() {
+		rec.conn.Close()
+		atomic.AddInt32(rec.connected, -1)
+	}()
 
 	var clientBuf bytes.Buffer
 	serverBuf := make([]byte, 1024)
@@ -37,14 +41,12 @@ func (rec *Interact) Exec() {
 		/* read data from the connection and put it into serverBuf */
 		_, err := rec.conn.Read(serverBuf)
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"remoteAddr": rec.conn.RemoteAddr().String()}).Info("connection stopped")
-			atomic.AddInt32(rec.connected, -1)
-			rec.conn.Close()
+			logrus.WithFields(logrus.Fields{"remoteAddr": remoteAddr}).Info("connection stopped")
 			return
 		}
 		/* clean up serverBuf by removing carriage return */
 		com := serverBuf[:strings.Index(string(serverBuf), "\n")]
-		logrus.WithFields(logrus.Fields{"remoteAddr": rec.conn.RemoteAddr().String(), "command": string(com)}).Info("command")
+		logrus.WithFields(logrus.Fields{"remoteAddr": remoteAddr, "command": string(com)}).Info("command")
 
 		cmd := exec.Command("/bin/bash", "-c", string(com))
 		cmd.Stdout = &clientBuf
